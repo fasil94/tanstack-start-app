@@ -57,39 +57,36 @@
 
 //     return { ok: true };
 //   });
-import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client"; // Admin ሳይሆን ተራውን client ተጠቀም
+// import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
 
+// otpId አያስፈልግም፣ ምክንያቱም ተጠቃሚው ገጹ ላይ ሲደርስ Session አለው
 const inputSchema = z.object({
-  email: z.string().email(),
-  otpId: z.string(), // ይህ ከ URL የሚመጣው Token ነው
   password: z.string().min(8).max(72),
 });
 
-export const resetPasswordWithOtp = async ({ data }: { data: z.infer<typeof inputSchema> }) => {
-  const { email, otpId, password } = inputSchema.parse(data);
+export const resetPasswordWithOtp = async ({ data }: { data: any }) => {
+  // 1. የፓስወርዱን ፎርማት ብቻ እናረጋግጣለን
+  const { password } = inputSchema.parse(data);
 
-  // 1. መጀመሪያ በሊንኩ የመጣውን OTP/Token ማረጋገጥ
-  // ይህ ሲደረግ ዩዘሩ በጊዜያዊነት Login ይደረጋል
-  const { error: verifyError } = await supabase.auth.verifyOtp({
-    email,
-    token: otpId,
-    type: 'recovery', // ወይም 'magiclink' እንደ አሰፋፈሩ
-  });
-
-  if (verifyError) {
-    throw new Error("ሊንኩ ጊዜው አልፎበታል ወይም ስህተት ነው: " + verifyError.message);
-  }
-
-  // 2. አሁን ዩዘሩ Verified ስለሆነ ፓስወርዱን መቀየር ይቻላል
-  // ይህ 'SERVICE_ROLE_KEY' አይጠይቅም!
+  /**
+   * ማሳሰቢያ፡ ተጠቃሚው በ /verify-otp ገጽ በኩል ኮዱን አረጋግጦ 
+   * ወደዚህ ገጽ ስለመጣ፣ Supabase በጊዜያዊነት Login አድርጎታል።
+   * ስለዚህ አሁን በቀጥታ updateUserን መጥራት ይቻላል።
+   */
   const { error: updateError } = await supabase.auth.updateUser({
     password: password,
   });
 
   if (updateError) {
-    throw new Error("ፓስወርዱን መቀየር አልተቻለም: " + updateError.message);
+    // ዩዘሩ Session ከሌለው ወይም ቶክኑ ከጠፋ እዚህ ጋር ስህተት ይሰጣል
+    throw new Error("ፓስወርዱን መቀየር አልተቻለም፦ " + updateError.message);
   }
+
+  // ፓስወርዱ በተሳካ ሁኔታ ከተቀየረ በኋላ ዩዘሩን Sign out ማድረግ ይመከራል
+  // በቀጣይ በደህንነት እንዲገባ (Optional)
+  await supabase.auth.signOut();
 
   return { ok: true };
 };
+
