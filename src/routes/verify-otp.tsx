@@ -218,15 +218,16 @@
 
 
 
-
-
-import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { z } from "zod";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { resetPasswordWithOtp } from "@/lib/password-reset";
 import { toast } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 
 const searchSchema = z.object({
   email: z.string().email().optional().catch(undefined),
