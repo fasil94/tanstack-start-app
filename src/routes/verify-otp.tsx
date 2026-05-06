@@ -217,10 +217,9 @@
 // }
 
 
-
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { z } from "zod";
+import { z } from "zod"; // ይህ መስመር ነው ስህተቱን የሚፈታው
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -229,104 +228,127 @@ import { resetPasswordWithOtp } from "@/lib/password-reset";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 
+// Schema ማስተካከያ
 const searchSchema = z.object({
   email: z.string().email().optional().catch(undefined),
-  purpose: z.enum(["signup", "password_reset"]).optional().catch(undefined),
+  otpId: z.string().optional().catch(undefined),
 });
 
-export const Route = createFileRoute("/verify-otp")({
-  head: () => ({ meta: [{ title: "Verify Code — My-Sea International" }] }),
+export const Route = createFileRoute("/reset-password-otp")({
   validateSearch: searchSchema,
-  component: VerifyOtpPage,
+  component: ResetPasswordOtpPage,
 });
 
-function VerifyOtpPage() {
+const passwordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(72, "Password is too long"),
+    confirm: z.string(),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: "Passwords don't match",
+    path: ["confirm"],
+  });
+
+function ResetPasswordOtpPage() {
   const navigate = useNavigate();
-  const { email, purpose: purposeParam } = useSearch({ from: "/verify-otp" });
-  const purpose = purposeParam ?? "signup";
-  const isReset = purpose === "password_reset";
-  const [digits, setDigits] = useState<string[]>(Array(6).fill(""));
+  const { email } = useSearch({ from: "/reset-password-otp" });
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const inputs = useRef<Array<HTMLInputElement | null>>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // ስህተቱን የሚፈታው አዲሱ handlePaste ፈንክሽን
-  const handlePaste = (e: React.ClipboardEvent) => {
+  useEffect(() => {
+    if (!email) {
+      navigate({ to: "/forgot-password" });
+    }
+  }, [email, navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data = e.clipboardData.getData("text").trim();
-    if (!/^\d{6}$/.test(data)) return; // 6 ዲጂት ካልሆነ አይቀበለውም
+    setErrors({});
 
-    const newDigits = data.split("");
-    setDigits(newDigits);
-    inputs.current[5]?.focus(); // ወደ መጨረሻው ሳጥን ይወስደዋል
-  };
-
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = digits.join("");
-    if (code.length !== 6) {
-      toast.error("Please enter all 6 digits");
+    const result = passwordSchema.safeParse({ password, confirm });
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = issue.path[0]?.toString() ?? "form";
+        if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+      }
+      setErrors(fieldErrors);
       return;
     }
 
     setLoading(true);
-    const { data: otpId, error } = await supabase.rpc("verify_otp", {
-      _email: email,
-      _code: code,
-      _purpose: purpose,
-    });
-    setLoading(false);
-
-    if (error || !otpId) {
-      toast.error(error?.message ?? "Verification failed.");
-      return;
-    }
-
-    if (isReset) {
-      toast.success("Code verified! Now set your password.");
-      navigate({ to: "/reset-password-otp", search: { email } });
-    } else {
-      toast.success("Email verified!");
+    try {
+      await resetPasswordWithOtp({
+        data: { password: result.data.password },
+      });
+      
+      toast.success("Password updated successfully ✨");
       navigate({ to: "/login" });
-    }
-  };
-
-  const handleChange = (i: number, v: string) => {
-    const c = v.replace(/\D/g, "").slice(-1);
-    const next = [...digits];
-    next[i] = c;
-    setDigits(next);
-    if (c && i < 5) inputs.current[i + 1]?.focus();
-  };
-
-  const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !digits[i] && i > 0) {
-      inputs.current[i - 1]?.focus();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update password");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <SiteLayout>
-      <section className="mx-auto max-w-md px-6 py-20 text-center">
-        <h1 className="font-display text-4xl text-primary">Verify Code</h1>
-        <p className="mt-4 text-muted-foreground">Enter the 6-digit code sent to your email.</p>
-        
-        <form onSubmit={handleVerify} className="mt-10 space-y-6">
-          <div className="flex justify-between gap-2">
-            {digits.map((d, i) => (
-              <input
-                key={i}
-                ref={(el) => (inputs.current[i] = el)}
-                type="text"
-                value={d}
-                onChange={(e) => handleChange(i, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(i, e)}
-                onPaste={handlePaste} // አሁን handlePaste ተለይቷል!
-                className="h-14 w-12 rounded-md border border-input text-center text-2xl font-semibold focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+      <section className="mx-auto max-w-md px-6 py-20">
+        <div className="text-center">
+          <h1 className="font-display text-4xl text-primary">Set new password</h1>
+          <p className="mt-2 text-muted-foreground italic">{email}</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-10 space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="password">New Password</Label>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPw ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
-            ))}
+              <button
+                type="button"
+                onClick={() => setShowPw(!showPw)}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
           </div>
-          <Button type="submit" disabled={loading} className="w-full rounded-full py-6 text-lg">
-            {loading ? "Verifying..." : "Verify"}
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm">Confirm Password</Label>
+            <div className="relative">
+              <Input
+                id="confirm"
+                type={showConfirm ? "text" : "password"}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {errors.confirm && <p className="text-xs text-destructive">{errors.confirm}</p>}
+          </div>
+
+          <Button type="submit" disabled={loading} className="w-full rounded-full py-6">
+            {loading ? "Updating..." : "Update Password"}
           </Button>
         </form>
       </section>
