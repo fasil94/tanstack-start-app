@@ -179,9 +179,17 @@ import { resetPasswordWithOtp } from "@/lib/password-reset";
 import { toast } from "sonner";
 
 // 1. Schema ማስተካከያ - otpId አያስፈልግም
+// const searchSchema = z.object({
+//   email: z.string().email().optional().catch(undefined),
+// });
+
+
 const searchSchema = z.object({
   email: z.string().email().optional().catch(undefined),
+  // እዚህ ጋር otpId የሚለውን ጨምርበት (ምንም እንኳን ባንጠቀምበትም ራውተሩ እንዳይቆጣ)
+  otpId: z.string().optional().catch(undefined),
 });
+
 
 export const Route = createFileRoute("/reset-password-otp")({
   head: () => ({ meta: [{ title: "Set new password — My-Sea International" }] }),
